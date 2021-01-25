@@ -1,3 +1,3 @@
 List of documents
-- Original datasheet
+- Original datasheet: TOF10120-20190409-Datasheet.pdf
 - Translated datasheet
