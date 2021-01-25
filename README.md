@@ -7,3 +7,5 @@ There is basic code to get the distance, but when you dig into the data sheet an
 - Set/read a distance offset (calibrate)
 - Enable/disable I2C/uart communication
 - Set/read the I2C address
+
+This is my first time publishing code on GitHub, so doing both to share with the world, be able to find for myself, as well as learn how to use GitHub
