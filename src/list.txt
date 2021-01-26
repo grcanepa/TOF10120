@@ -1,1 +1,3 @@
 Code list and description
+
+sketch-TOF10120-Rev0.ino //Arduino code for ESP8266 that shows how to read/write from the sensor over I2C including resetting the I2C address. I wrote for the ESP8266, but as long as you have an I2C library you should be able to use with any Arduino
