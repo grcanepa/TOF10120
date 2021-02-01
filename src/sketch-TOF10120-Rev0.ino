@@ -32,22 +32,28 @@
 * Rev 0.0
 *   Initial rev
 *   Does an I2C scan (in case you need a scanner)
-*   Has code to write deviation and I2C address, but not active (writing is to EEprom and there is a cycle limit on EEprom)
+*   Has code to write deviation and I2C address, but not active by default (writing is to EEprom and there is a cycle limit on EEprom)
+*   Code to set a new i2c address 
+    *  Does to a new value of: 0xA8 which is 0x54 (b7-b1) which is 84 (int) value given to Wire.beginTransmission(i2c_Address);
+    *  From a default i2c_Address of 82 (0xA4 which is 0x52 (b7-b1) which is what shows on an i2c scanner
+* 
 *   Has code to do all the read operations (RealTime and Filtered Data, Data Deviation, Various Data send/Receive modes, and I2C address)
 *   The GitHub repository has the original Chinese version of the datasheet, and other notes I have captured along the way
-*   In case you got the code from another source, my version is at: https://github.com/grcanepa/TOF10120
+*   In case you got the code from another source, my original version of this code is at: https://github.com/grcanepa/TOF10120
 *  
+*   I included some UART code that I had developed to use the UART mode (default read only)
+*   I posted this primarily for the I2C code, as I could not find any I2C write code online
 */
 
-//Library for I2C SDC/SDL use on D7 D1 (try on D3/D4 worked that way on weatherstation)
-#include <Wire.h>
+//Library for I2C SDC/SDL uses D3/D4 on ESP8266
 
+#include <Wire.h>
 #include <SoftwareSerial.h>
-//Initialize SoftwareSerial
+
+//Initialize SoftwareSerial (for UART)
 SoftwareSerial ss(D1); 
 
 float tofDist = 0;
-
 
 //Buffer used for I2C read operations
 unsigned char i2c_rx_buf[16];
@@ -57,10 +63,14 @@ char* distC = "01234567890123456789";
 int countC = 0;
 int countM = 0;
 
+//I2C Variables
+int i2c_Address = 82;
+
 void setup() { //----------------------------------------------------------------SETUP START -------------------------------------------
 
-//To talk to the PC so as to display value
+//To talk to the PC so as to display values
 Serial.begin(9600);
+delay(100);
 Serial.println("Started Serial in Setup");
 
 //Start Software serial for uArt
@@ -70,8 +80,10 @@ ss.begin(9600);
 Wire.begin(D3,D4);  //start Wire and set SDA - SCL  pins // Note 1
                     //Can include an address as 3rd parameter, it would be the address of the master
 
+//Check for I2C addresses (on Wire I2C pins)
+scanI2C();
 
-//Option to set the distance deviation or other values that can be set
+//Option to set the distance deviation or other values that can be set such as i2c address
 
 int distDevSetResponse;
 //To change the deviation value (must be a EEPROM bit so do sparingly
@@ -86,6 +98,26 @@ if (false) {
     delay(10);
 }
 
+int i2cAddressSetResponse=0;
+
+if (false) {
+    i2cAddressSetResponse = GoSensorWriteRead(0x0f, true, 0xA8); //  0xA6 b7-b0 is 0x53 b7-b1
+                                                                 //  So write as 0xA6 and then access with 83 int on "wire"
+                                                                 //  0xA8 is 0x54 b7-b1
+                                                                 //  So write as 0xA6 and then access with 84 int on "wire"
+                                                                 //  To get back to default, set i2c_Address to the int version 
+                                                                 //  of the address from the scan nd then
+                                                                 //  write 0xA4 which is 0x52 b7-b1 and then with 82 int on "wire"
+    
+    Serial.println("");
+    Serial.print(" Set I2C address response: ");
+    Serial.println(i2cAddressSetResponse, HEX);  
+    
+    //It takes a while for the device to respond to a scan, this delay is not calibrated                                          
+    delay(2000);
+    i2c_Address = 84; //New int location to give to "wire" to access i2c at 0xA8 that respondes with 0x54 on a scan
+}
+
 //Check for I2C addresses (on Wire I2C pins)
 scanI2C();
 
@@ -94,10 +126,13 @@ scanI2C();
 // the loop function runs over and over again forever
 void loop() { // ------------------------------------------------------- LOOP START ------------------------------------------
 
-//I2C TOF10120 Readable parameters
+Serial.println("In Loop");
+scanI2C();
+
+//Display I2C TOF10120 Readable parameters
 if (true) {
 int x_mm = GoSensorRead(0x00);
-    Serial.print("Dist: ");
+    Serial.print("Real time Dist: ");
     Serial.print(x_mm);
     delay(10);
     
@@ -127,11 +162,13 @@ int distDmode = GoSensorWriteRead(0x08,false,0x00,0x00);
     delay(10);
 
 int distMax = GoSensorWriteRead(0x0c,false,0x00,0x00);
-    Serial.print(" Dist Max Mode: ");
+    Serial.print(" Dist Max Value: ");
     Serial.println(distMax);
     delay(10);
+
+delay(2000);
     
-return;
+Serial.println("End of Loop");
 
 }
 
@@ -147,7 +184,7 @@ void scanI2C() {
   byte error, address;
   int nDevices;
  
-  Serial.println("Scanning...");
+  Serial.println("Scanning for I2C addresses...");
  
   nDevices = 0;
   for(address = 1; address < 127; address++ ) 
@@ -182,14 +219,15 @@ void scanI2C() {
    
 }
 
-//Default to "82" as I2C address, Takes command "addr" , expects cnt bytes on the read, content goes into datbuf
+//Default i2c_Address is set to "82", Takes command "addr" , expects cnt bytes on the read, content goes into datbuf
 //There is a read after the write to get the data from the read operation
-//This is the lowest level read/write
+//This is the lowest level read/write function
+//There are other functions that make it easier to setup calls to this function
 void SensorWriteRead(unsigned char addr,unsigned char* datbuf,unsigned char cnt, boolean writeOp, byte hByte, byte lByte) 
 {
   unsigned short result=0;
   // step 1: Set the I2C address
-  Wire.beginTransmission(82); // I2C address is set by the top 7 bits in the byte (8th bit determines if doing a read or write)
+  Wire.beginTransmission(i2c_Address); // I2C address is set by the top 7 bits in the byte (8th bit determines if doing a read or write)
                               // the address specified in the TOF10120 datasheet is 164 (0xa4) but is vs an 8bit reference
                               // Wire library wants the address on a 7bit reference
                               // So need to shift the 0xa4 right by 1 bit which gives you 0x52 or 82 decimal (164/2)
@@ -234,7 +272,7 @@ void SensorWriteRead(unsigned char addr,unsigned char* datbuf,unsigned char cnt,
   delay(1);                   // datasheet suggests at least 30uS
   
   // step 6: request reading from sensor
-  Wire.requestFrom(82, cnt);    // request cnt bytes from slave device at 82 (0x52) same 8 vs 7 bit shift vs datasheet
+  Wire.requestFrom(i2c_Address, cnt);    // request cnt bytes from slave device at 82 (0x52) same 8 vs 7 bit shift vs datasheet
                                 // cnt = 2 (2 bytes is enough to get 0-2000 or 1 for other registered as set in step2)
                                 // These must go into an internal buffer
                                 
@@ -261,14 +299,15 @@ int GoSensorRead(unsigned char addrS) {
   return GoSensorWriteRead(addrS, false, 0x00, 0x00);
 }
 
-//Single byte sensor call
+//Single byte sensor call (for write but can be used to read)
 int GoSensorWriteRead(unsigned char addrS, boolean writeOp, byte byteH) {
   //A read has write as "false" and data bytes as 0x00
   //The function figures out the "byte count" that goes with each address
-  return GoSensorWriteRead(addrS, false, byteH);
+  return GoSensorWriteRead(addrS, writeOp, byteH, 0x00);
   
 }
 
+//Dual byte sensor call (bytes are for write but can also be used to read, as bytes are ignored when in read mode)
 //read/write byteCnt are always the same. Set by address. readOp if false writeOp if true
 int GoSensorWriteRead(unsigned char addrS, boolean writeOp, byte byteH, byte byteL) {
 
