@@ -31,8 +31,9 @@
 *  
 * Rev 0.0
 *   Initial rev
-*   Does an I2C scan (in case you need a scanner)
+*   Includes an I2C scanner (in case you need a scanner to find the device)
 *   Has code to write deviation and I2C address, but not active by default (writing is to EEprom and there is a cycle limit on EEprom)
+*   
 *   Code to set a new i2c address 
     *  Does to a new value of: 0xA8 which is 0x54 (b7-b1) which is 84 (int) value given to Wire.beginTransmission(i2c_Address);
     *  From a default i2c_Address of 82 (0xA4 which is 0x52 (b7-b1) which is what shows on an i2c scanner
@@ -43,6 +44,8 @@
 *  
 *   I included some UART code that I had developed to use the UART mode (default read only)
 *   I posted this primarily for the I2C code, as I could not find any I2C write code online
+*   
+*   I did get 3 sensors on the same bus one at 0x52, another at 0x53 and the third at 0x54
 */
 
 //Library for I2C SDC/SDL uses D3/D4 on ESP8266
@@ -64,7 +67,9 @@ int countC = 0;
 int countM = 0;
 
 //I2C Variables
-int i2c_Address = 82;
+int i2c_Address = 82; //int value used by Wire.beginTransmission(i2cAddress)
+                      //scanI2C() sees it as 0x52
+                      //write 0xA4 using 0x0f command to set sensor to this address
 
 void setup() { //----------------------------------------------------------------SETUP START -------------------------------------------
 
@@ -77,13 +82,14 @@ Serial.println("Started Serial in Setup");
 ss.begin(9600); 
 
 //Initialize "Wire" for I2C
-Wire.begin(D3,D4);  //start Wire and set SDA - SCL  pins // Note 1
-                    //Can include an address as 3rd parameter, it would be the address of the master
+Wire.begin(D3,D4);  //start Wire I2C communication, and set SDA - SCL  pins  
+                    //Can include an address as 3rd parameter, it would be the address of the master (Arduino)
 
-//Check for I2C addresses (on Wire I2C pins)
+//Check for I2C addresses (Any device connected to the Wire I2C pins D3, D4)
 scanI2C();
 
-//Option to set the distance deviation or other values that can be set such as i2c address
+//Option to set the distance deviation for the sensor (calibrate accuracy +/-99mm
+//Sensors have a default calibration value set at the factory
 
 int distDevSetResponse;
 //To change the deviation value (must be a EEPROM bit so do sparingly
@@ -98,16 +104,19 @@ if (false) {
     delay(10);
 }
 
+//Option to wrie the  tof10120 i2c address to 0xA8, which would scan as 0x54 and be set in Wire.beginTransmission(84)
 int i2cAddressSetResponse=0;
 
 if (false) {
     i2cAddressSetResponse = GoSensorWriteRead(0x0f, true, 0xA8); //  0xA6 b7-b0 is 0x53 b7-b1
                                                                  //  So write as 0xA6 and then access with 83 int on "wire"
+                                                                 
                                                                  //  0xA8 is 0x54 b7-b1
-                                                                 //  So write as 0xA6 and then access with 84 int on "wire"
+                                                                 //  So write as 0xA8 and then access with 84 int on "wire"
+                                                                 
                                                                  //  To get back to default, set i2c_Address to the int version 
-                                                                 //  of the address from the scan nd then
-                                                                 //  write 0xA4 which is 0x52 b7-b1 and then with 82 int on "wire"
+                                                                 //  of the address from the scan and then
+                                                                 //  write 0xA4 which is 0x52 b7-b1 and then access with 82 int on "wire"
     
     Serial.println("");
     Serial.print(" Set I2C address response: ");
@@ -118,7 +127,7 @@ if (false) {
     i2c_Address = 84; //New int location to give to "wire" to access i2c at 0xA8 that respondes with 0x54 on a scan
 }
 
-//Check for I2C addresses (on Wire I2C pins)
+//Check for I2C addresses (of any device on Wire I2C pins)
 scanI2C();
 
 } //End of setup routine ----------------------------------------------- END OF SETUP ----------------------------------------
@@ -126,52 +135,25 @@ scanI2C();
 // the loop function runs over and over again forever
 void loop() { // ------------------------------------------------------- LOOP START ------------------------------------------
 
+//Setup to read data from 3 sensors that share the I2C pins, which scan at 0x52, 0x53, 0x54
+//And have Wire.beginTransmission(address) set to 82,83,84
+
 Serial.println("In Loop");
-scanI2C();
 
-//Display I2C TOF10120 Readable parameters
-if (true) {
-int x_mm = GoSensorRead(0x00);
-    Serial.print("Real time Dist: ");
-    Serial.print(x_mm);
-    delay(10);
-    
-int xfilt = GoSensorRead(0x04);
-  Serial.print(" Filt Dist: ");
-    Serial.print(xfilt);
-    delay (10);
+// Inc ase you want to scan every loop
+if (false) scanI2C();
 
-int xdev = GoSensorWriteRead(0x06,false,0x00,0x00);
-    Serial.print(" Dist Dev: ");
-    Serial.print(xdev);  
-    delay(10);
-  
-int addI2C = GoSensorWriteRead(0x0f,false,0x00,0x00);
-    Serial.print(" I2C Addr: ");
-    Serial.print(addI2C);
-    delay(10);
+//Show data 
+Serial.print("Data 0x52: ");
+readTof10120Data(82);
+Serial.print("Data 0x53: ");
+readTof10120Data(83);
+Serial.print("Data 0x54: ");
+readTof10120Data(84);
 
-int distSmode = GoSensorWriteRead(0x09,false,0x00,0x00);
-    Serial.print(" Dist Send Mode: ");
-    Serial.print(distSmode);
-    delay(10);
-
-int distDmode = GoSensorWriteRead(0x08,false,0x00,0x00);
-    Serial.print(" Dist Data Mode: ");
-    Serial.print(distDmode);
-    delay(10);
-
-int distMax = GoSensorWriteRead(0x0c,false,0x00,0x00);
-    Serial.print(" Dist Max Value: ");
-    Serial.println(distMax);
-    delay(10);
-
-delay(2000);
+delay(1);
     
 Serial.println("End of Loop");
-
-}
-
 
 } //End of "Loop"  ----------------------------------------------------------------------
 
@@ -218,6 +200,54 @@ void scanI2C() {
     Serial.println("done\n");
    
 }
+
+void readTof10120Data(int i2c_Address_Local) {
+
+//Set the i2cAddress to read per request
+i2c_Address=i2c_Address_Local;
+
+//Display I2C TOF10120 Readable parameters for i2c_Address
+
+int xfilt = GoSensorRead(0x04);
+  Serial.print(" Filt Dist: ");
+    Serial.print(xfilt);
+    delay (1);
+
+//For quick mode change to if (true). I was getting a loop that printed all three values in 324ms
+if (false) {Serial.print(""); return; } 
+  
+int x_mm = GoSensorRead(0x00);
+    Serial.print("Real time Dist: ");
+    Serial.print(x_mm);
+    delay(1);
+    
+int xdev = GoSensorWriteRead(0x06,false,0x00,0x00);
+    Serial.print(" Dist Dev: ");
+    Serial.print(xdev);  
+    delay(1);
+  
+int addI2C = GoSensorWriteRead(0x0f,false,0x00,0x00);
+    Serial.print(" I2C Addr: ");
+    Serial.print(addI2C);
+    delay(1);
+
+int distSmode = GoSensorWriteRead(0x09,false,0x00,0x00);
+    Serial.print(" Dist Send Mode: ");
+    Serial.print(distSmode);
+    delay(1);
+
+int distDmode = GoSensorWriteRead(0x08,false,0x00,0x00);
+    Serial.print(" Dist Data Mode: ");
+    Serial.print(distDmode);
+    delay(1);
+
+int distMax = GoSensorWriteRead(0x0c,false,0x00,0x00);
+    Serial.print(" Dist Max Value: ");
+    Serial.println(distMax);
+    delay(10);
+
+}
+
 
 //Default i2c_Address is set to "82", Takes command "addr" , expects cnt bytes on the read, content goes into datbuf
 //There is a read after the write to get the data from the read operation
