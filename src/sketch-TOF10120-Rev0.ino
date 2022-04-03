@@ -97,8 +97,11 @@ int distDevSetResponse;
 //Deviation a two byte write, should work the same way to write a new I2C address, a 1 byte write
 //Should be GoSensorWrite(ox0f, true, 0x53) ; //to change to 0x53 from 0x52 or maybe 0xA6 since there is a shift)
 if (false) {
-    distDevSetResponse = GoSensorWriteRead(0x06, true, -35); // 0xdd is -35, 0xda is -38 (original) to "deviation" address
-    
+    GoSensorWriteRead(0x06, true, -35); // 0xdd is -35, 0xda is -38 (original) to "deviation" address
+                  // If writeOp == true then GoSensorWriteRead() never returns a reasonable value.  
+    delay(500);   // When writing some parameters, it is necessary to wait for the end of the operation.
+  
+    distDevSetResponse = GoSensorWriteRead(0x06, false);
     Serial.println("");
     Serial.print(" Set Distance Deviation: ");
     Serial.println(distDevSetResponse);                                            
@@ -109,7 +112,7 @@ if (false) {
 int i2cAddressSetResponse=0;
 
 if (false) {
-    i2cAddressSetResponse = GoSensorWriteRead(0x0f, true, 0xA8); //  0xA6 b7-b0 is 0x53 b7-b1
+    GoSensorWriteRead(0x0f, true, 0xA8); //  0xA6 b7-b0 is 0x53 b7-b1
                                                                  //  So write as 0xA6 and then access with 83 int on "wire"
                                                                  
                                                                  //  0xA8 is 0x54 b7-b1
@@ -118,7 +121,11 @@ if (false) {
                                                                  //  To get back to default, set i2c_Address to the int version 
                                                                  //  of the address from the scan and then
                                                                  //  write 0xA4 which is 0x52 b7-b1 and then access with 82 int on "wire"
-    
+                                                                 //  If writeOp == true then GoSensorWriteRead() never returns a reasonable value.
+  
+    delay(500);   // When writing especially i2cAddressSetResponse parameter, it is necessary to wait for the end of the operation.
+  
+    i2cAddressSetResponse = GoSensorWriteRead(0x0f, false);
     Serial.println("");
     Serial.print(" Set I2C address response: ");
     Serial.println(i2cAddressSetResponse, HEX);  
@@ -291,7 +298,11 @@ void SensorWriteRead(unsigned char addr,unsigned char* datbuf,unsigned char cnt,
       Wire.write(val >> 8);
     
     //write the lByte
-    Wire.write(val & 0xff);
+    Wire.write(val & 0x00ff);
+     
+    Wire.endTransmission();      // stop transmitting (actually all the .write are stored in a buffer
+                                 // the .end triggers the write of the entire buffer 
+    return;                      // It makes no sense to continue reading back, because the reading fails.
   }
 
   // step 4: End the write sequence (which is what triggers the Wire to initiate the write sequence)
