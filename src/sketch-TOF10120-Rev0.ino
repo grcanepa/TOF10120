@@ -55,6 +55,7 @@
 
 //Initialize SoftwareSerial (for UART)
 SoftwareSerial ss(D1); 
+int GoSensorWriteRead(unsigned char addrS, boolean writeOp = false, int val = 0);
 
 float tofDist = 0;
 
@@ -96,11 +97,14 @@ int distDevSetResponse;
 //Deviation a two byte write, should work the same way to write a new I2C address, a 1 byte write
 //Should be GoSensorWrite(ox0f, true, 0x53) ; //to change to 0x53 from 0x52 or maybe 0xA6 since there is a shift)
 if (false) {
-    distDevSetResponse = GoSensorWriteRead(0x06, true, 0xff, 0xda); // 0xdd is -35, 0xda is -38 (original) to "deviation" address
-    
+    GoSensorWriteRead(0x06, true, -35); // 0xdd is -35, 0xda is -38 (original) to "deviation" address
+                  // If writeOp == true then GoSensorWriteRead() never returns a reasonable value.  
+    delay(500);   // When writing some parameters, it is necessary to wait for the end of the operation.
+  
+    distDevSetResponse = GoSensorWriteRead(0x06, false);
     Serial.println("");
     Serial.print(" Set Distance Deviation: ");
-    Serial.println(distDevSetResponse, HEX);                                            
+    Serial.println(distDevSetResponse);                                            
     delay(10);
 }
 
@@ -108,7 +112,7 @@ if (false) {
 int i2cAddressSetResponse=0;
 
 if (false) {
-    i2cAddressSetResponse = GoSensorWriteRead(0x0f, true, 0xA8); //  0xA6 b7-b0 is 0x53 b7-b1
+    GoSensorWriteRead(0x0f, true, 0xA8); //  0xA6 b7-b0 is 0x53 b7-b1
                                                                  //  So write as 0xA6 and then access with 83 int on "wire"
                                                                  
                                                                  //  0xA8 is 0x54 b7-b1
@@ -117,7 +121,11 @@ if (false) {
                                                                  //  To get back to default, set i2c_Address to the int version 
                                                                  //  of the address from the scan and then
                                                                  //  write 0xA4 which is 0x52 b7-b1 and then access with 82 int on "wire"
-    
+                                                                 //  If writeOp == true then GoSensorWriteRead() never returns a reasonable value.
+  
+    delay(500);   // When writing especially i2cAddressSetResponse parameter, it is necessary to wait for the end of the operation.
+  
+    i2cAddressSetResponse = GoSensorWriteRead(0x0f, false);
     Serial.println("");
     Serial.print(" Set I2C address response: ");
     Serial.println(i2cAddressSetResponse, HEX);  
@@ -221,27 +229,27 @@ int x_mm = GoSensorRead(0x00);
     Serial.print(x_mm);
     delay(1);
     
-int xdev = GoSensorWriteRead(0x06,false,0x00,0x00);
+int xdev = GoSensorWriteRead(0x06);
     Serial.print(" Dist Dev: ");
     Serial.print(xdev);  
     delay(1);
   
-int addI2C = GoSensorWriteRead(0x0f,false,0x00,0x00);
+int addI2C = GoSensorWriteRead(0x0f);
     Serial.print(" I2C Addr: ");
     Serial.print(addI2C);
     delay(1);
 
-int distSmode = GoSensorWriteRead(0x09,false,0x00,0x00);
+int distSmode = GoSensorWriteRead(0x09);
     Serial.print(" Dist Send Mode: ");
     Serial.print(distSmode);
     delay(1);
 
-int distDmode = GoSensorWriteRead(0x08,false,0x00,0x00);
+int distDmode = GoSensorWriteRead(0x08);
     Serial.print(" Dist Data Mode: ");
     Serial.print(distDmode);
     delay(1);
 
-int distMax = GoSensorWriteRead(0x0c,false,0x00,0x00);
+int distMax = GoSensorWriteRead(0x0c);
     Serial.print(" Dist Max Value: ");
     Serial.println(distMax);
     delay(10);
@@ -253,7 +261,7 @@ int distMax = GoSensorWriteRead(0x0c,false,0x00,0x00);
 //There is a read after the write to get the data from the read operation
 //This is the lowest level read/write function
 //There are other functions that make it easier to setup calls to this function
-void SensorWriteRead(unsigned char addr,unsigned char* datbuf,unsigned char cnt, boolean writeOp, byte hByte, byte lByte) 
+void SensorWriteRead(unsigned char addr,unsigned char* datbuf,unsigned char cnt, boolean writeOp = false, int val = 0) 
 {
   unsigned short result=0;
   // step 1: Set the I2C address
@@ -271,6 +279,7 @@ void SensorWriteRead(unsigned char addr,unsigned char* datbuf,unsigned char cnt,
                                // addr = 0x06 ( for setting "deviation" (i.e. offset calibration)(2 write bytes, 2 read bytes) (returns deviation)
                                // addr = 0x08 ( for distance data mode (1 write byte 1 read byte) (0=filtered 1=RealTime) (returns 0 or 1)
                                // addr = 0x09 ( for distance sending method (1 write byte, 1 byte read) (0=uart, 1=uart&&I2C) (returns 0 or 1)
+                               // addr = 0x0c ( for maximal distance range (2 write byte, 2 byte read) (returns max. distance range )
                                // addr = 0x0f ( for I2C address (1 write byte, 1 read byte) (returns I2C address (on b7-b1 b0=0)
                                
   
@@ -279,18 +288,21 @@ void SensorWriteRead(unsigned char addr,unsigned char* datbuf,unsigned char cnt,
   if (writeOp) {
 
     //Read provides higher order byte 1st, then lower order byte, write is the same;
-    
     //These bytes are to set "deviation" to -37mm (0xffxb)
-    //byte hByte = 0xff;  //range is +/- 99 but wants two bytes so high byte is always 0xff
-    //byte lByte = 0xdc;  //0xd9 would be -39 0xda would be -38 0xdb is -37 0xdc is -36
-                        //+99 is 0x63 to -99 should be 0x9d (As 0xff is -1 so 0xff - (98=0x62) is 0x9d)
+                          //range is +/- 99 but wants two bytes so high byte is always 0xff
+                          //0xd9 would be -39 0xda would be -38 0xdb is -37 0xdc is -36
+                          //+99 is 0x63 to -99 should be 0x9d (As 0xff is -1 so 0xff - (98=0x62) is 0x9d)
   
     //If writing always write the  hByte  
-    Wire.write(hByte);
+    if(cnt == 2)
+      Wire.write(val >> 8);
     
-    //if writing 2 bytes, write the lByte
-    if (cnt==2)
-        Wire.write(lByte);
+    //write the lByte
+    Wire.write(val & 0x00ff);
+     
+    Wire.endTransmission();      // stop transmitting (actually all the .write are stored in a buffer
+                                 // the .end triggers the write of the entire buffer 
+    return;                      // It makes no sense to continue reading back, because the reading fails.
   }
 
   // step 4: End the write sequence (which is what triggers the Wire to initiate the write sequence)
@@ -326,20 +338,12 @@ void SensorWriteRead(unsigned char addr,unsigned char* datbuf,unsigned char cnt,
 int GoSensorRead(unsigned char addrS) {
   //A read has write as "false" and data bytes as 0x00
   //The function figures out the "byte count" that goes with each address
-  return GoSensorWriteRead(addrS, false, 0x00, 0x00);
+  return GoSensorWriteRead(addrS, false, 0);
 }
 
-//Single byte sensor call (for write but can be used to read)
-int GoSensorWriteRead(unsigned char addrS, boolean writeOp, byte byteH) {
-  //A read has write as "false" and data bytes as 0x00
-  //The function figures out the "byte count" that goes with each address
-  return GoSensorWriteRead(addrS, writeOp, byteH, 0x00);
-  
-}
-
-//Dual byte sensor call (bytes are for write but can also be used to read, as bytes are ignored when in read mode)
+//Both Single and Dual byte sensor call (bytes are for write but can also be used to read, as bytes are ignored when in read mode)
 //read/write byteCnt are always the same. Set by address. readOp if false writeOp if true
-int GoSensorWriteRead(unsigned char addrS, boolean writeOp, byte byteH, byte byteL) {
+int GoSensorWriteRead(unsigned char addrS, boolean writeOp, int val) {
 
   short length_S = 0;        //A short is 2 bytes (use signed for "deviation")
   
@@ -347,16 +351,16 @@ int GoSensorWriteRead(unsigned char addrS, boolean writeOp, byte byteH, byte byt
   
   //If unsigned two byte commands (read distance real time or filtered)
   if (addrS==0x00 || addrS==0x04) {
-      SensorWriteRead(addrS,i2c_rx_buf,2, false, byteH, byteL);
+      SensorWriteRead(addrS,i2c_rx_buf,2, false, val);
       length_U=i2c_rx_buf[0];
       length_U=length_U<<8;
       length_U|=i2c_rx_buf[1];
       delay(100); 
       return length_U;
     }
-  //else if 2 byte signed read/write deviation (calibration offset)
-  else if (addrS==0x06) {
-      SensorWriteRead(addrS,i2c_rx_buf,2, writeOp, byteH, byteL);
+  //else if 2 byte (un)signed read/write deviation (calibration offset) or  Max. Dist. 
+    else if(addrS == 0x06 || addrS == 0x0c)
+    { SensorWriteRead(addrS,i2c_rx_buf,2, writeOp, val);
       length_S=i2c_rx_buf[0];
       length_S=length_S<<8;
       length_S|=i2c_rx_buf[1];
@@ -365,8 +369,8 @@ int GoSensorWriteRead(unsigned char addrS, boolean writeOp, byte byteH, byte byt
   
     }
   //else if 1 byte unsigned (read/write mode/I2C address)
-  else if (addrS==0x08 || addrS==0x09 || addrS==0x0c || addrS==0x0f) {
-      SensorWriteRead(addrS,i2c_rx_buf,1, writeOp, byteH, byteL);
+  else if (addrS==0x08 || addrS==0x09 || addrS==0x0f) {
+      SensorWriteRead(addrS,i2c_rx_buf,1, writeOp, val);
       length_U=i2c_rx_buf[0];
       delay(100); 
       return length_U;
